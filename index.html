@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GST Dukan - Gmail Login</title>
+<style>
+body{font-family:Arial; padding:12px; background:#eef5ee}
+.box{background:white; padding:16px; border-radius:14px; margin-bottom:14px; box-shadow:0 2px 10px #0002}
+input{width:100%; padding:12px; margin:7px 0; border:1px solid #ccc; border-radius:9px; font-size:16px; box-sizing:border-box}
+button{width:100%; padding:13px; border:none; border-radius:9px; font-size:17px; font-weight:bold; margin-top:6px; color:white}
+.green{background:#0a7c00}.blue{background:#004aad}.red{background:#d40000}.whiteBtn{background:white; color:#333; border:1px solid #999}
+img{max-width:110px; border-radius:10px; margin-top:8px}
+#saveSection{display:none}
+</style>
+</head>
+<body>
+
+<div class="box" id="loginBox">
+<h3>🏪 दुकानदार Login (Gmail से)</h3>
+<p id="userInfo">Login नहीं है</p>
+<button class="blue" id="loginBtn">📧 Gmail से Login करो</button>
+<button class="red" id="logoutBtn" style="display:none">Logout</button>
+</div>
+
+<div class="box" id="saveSection">
+<h3 style="color:#0a7c00">1. अपना दुकान SAVE करो</h3>
+<input id="gst" placeholder="GST No - 10ABCDE1234F1Z5">
+<input id="name" placeholder="दुकान का नाम">
+<input id="mob" placeholder="मोबाइल नंबर">
+<input id="addr" placeholder="पूरा पता">
+<input type="file" id="logoFile" accept="image/*">
+<img id="preview" style="display:none">
+<button class="green" id="saveBtn">ONLINE SAVE करो</button>
+<p id="saveMsg"></p>
+</div>
+
+<div class="box">
+<h3 style="color:#004aad">2. ग्राहक - GST डालके खोजो (बिना Login)</h3>
+<input id="searchGst" placeholder="GST No डालो">
+<button class="blue" id="searchBtn">🔍 खोजो</button>
+<div id="result"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+// 👇 यहाँ अपना Config Paste करो
+const firebaseConfig = {
+  apiKey: "API_KEY_YAHAN_DALO",
+  authDomain: "PROJECT.firebaseapp.com",
+  projectId: "PROJECT_ID_YAHAN_DALO",
+  storageBucket: "PROJECT.appspot.com",
+  messagingSenderId: "123456",
+  appId: "1:123:web:abc"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
+
+let currentUser = null;
+let logoBase64 = "";
+
+// Gmail Login
+document.getElementById('loginBtn').onclick = async ()=>{
+  try{ await signInWithPopup(auth, provider); } catch(e){ alert(e.message) }
+};
+document.getElementById('logoutBtn').onclick = ()=> signOut(auth);
+
+onAuthStateChanged(auth, (user)=>{
+  currentUser = user;
+  if(user){
+    document.getElementById('userInfo').innerText = "✅ Login है: " + user.email;
+    document.getElementById('loginBtn').style.display='none';
+    document.getElementById('logoutBtn').style.display='block';
+    document.getElementById('saveSection').style.display='block';
+  } else {
+    document.getElementById('userInfo').innerText = "Login नहीं है - दुकान Save करने के लिए Login करो";
+    document.getElementById('loginBtn').style.display='block';
+    document.getElementById('logoutBtn').style.display='none';
+    document.getElementById('saveSection').style.display='none';
+  }
+});
+
+// Logo
+document.getElementById('logoFile').addEventListener('change', e=>{
+  let reader = new FileReader();
+  reader.onload = ev=>{
+    logoBase64 = ev.target.result;
+    let img = document.getElementById('preview');
+    img.src = logoBase64; img.style.display='block';
+  }
+  reader.readAsDataURL(e.target.files[0]);
+});
+
+// SAVE - सिर्फ Login वाला कर सकता है
+document.getElementById('saveBtn').onclick = async ()=>{
+  if(!currentUser){ alert("पहले Gmail से Login करो बबुआ!"); return; }
+  let gst = document.getElementById('gst').value.trim().toUpperCase();
+  if(!gst){ alert("GST डालो!"); return; }
+  document.getElementById('saveMsg').innerText = "Save हो रहा है...";
+  await setDoc(doc(db, "dukans", gst), {
+    gst: gst,
+    name: document.getElementById('name').value,
+    mob: document.getElementById('mob').value,
+    addr: document.getElementById('addr').value,
+    logo: logoBase64,
+    ownerEmail: currentUser.email,
+    ownerUid: currentUser.uid,
+    time: new Date().toString()
+  });
+  document.getElementById('saveMsg').innerText = "✅ Save हो गया! अब कोई भी GST डालेगा तो दिखेगा!";
+};
+
+// SEARCH - बिना Login के कोई भी कर सकता है
+document.getElementById('searchBtn').onclick = async ()=>{
+  let gst = document.getElementById('searchGst').value.trim().toUpperCase();
+  let resultDiv = document.getElementById('result');
+  if(!gst){ alert("GST डालो"); return; }
+  resultDiv.innerHTML = "खोज रहे हैं...";
+  let snap = await getDoc(doc(db, "dukans", gst));
+  if(!snap.exists()){
+    resultDiv.innerHTML = "<p style='color:red'>इस GST का दुकान नहीं मिला!</p>";
+  } else {
+    let d = snap.data();
+    resultDiv.innerHTML = `
+      <div style="margin-top:12px; border-top:2px solid green; padding-top:10px">
+        ${d.logo? `<img src="${d.logo}"><br>` : ""}
+        <b>🏪 दुकान:</b> ${d.name}<br>
+        <b>📱 मोबाइल:</b> ${d.mob}<br>
+        <b>📍 पता:</b> ${d.addr}<br>
+        <b>🧾 GST:</b> ${d.gst}<br>
+      </div>
+      <button class="green" style="background:#25D366; margin-top:10px" onclick="window.open('tel:${d.mob}')">📞 Call करो</button>
+    `;
+  }
+};
+</script>
+</body>
+</html>
